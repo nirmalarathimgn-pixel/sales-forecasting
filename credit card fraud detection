@@ -1,0 +1,174 @@
+README.md
+# Credit Card Fraud Detection
+
+*Summary:* Detect fraudulent transactions using Random Forest & XGBoost with imbalance handling and explainability (SHAP).
+
+*Dataset:* Credit Card Fraud Detection (Kaggle)  
+https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud
+
+*Files*
+- notebook.ipynb
+- code.py
+- dataset_link.txt
+- insights.txt
+- interview_questions.md
+- images/ (confusion matrix, ROC curve)
+
+*Key points*
+- Imbalanced dataset: use SMOTE / undersampling / class_weight.
+- Evaluate with Precision/Recall, F1 and ROC-AUC (focus on recall for fraud).
+- Use SHAP for model explainability to justify decisions to compliance teams.
+
+code.py
+# 💡 1. Import Important Libraries
+# ==========================================
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
+from sklearn.metrics import (
+    classification_report,
+    confusion_matrix,
+    roc_auc_score,
+    roc_curve,
+    accuracy_score
+)
+
+# ==========================================
+# 💾 2. Load Dataset
+# ==========================================
+df = pd.read_csv("creditcard.csv")
+print("✅ Dataset Loaded Successfully")
+print(df.shape)
+print(df.head())
+
+# ==========================================
+# 🔍 3. Check Missing Values & Class Distribution
+# ==========================================
+print("\nMissing Values:\n", df.isnull().sum().sum())
+print("\nClass Distribution:\n", df["Class"].value_counts())
+
+# Visualize imbalance
+plt.figure(figsize=(6,4))
+sns.countplot(x="Class", data=df, palette="coolwarm")
+plt.title("Fraud vs Non-Fraud Transactions")
+plt.show()
+
+# ==========================================
+# ⚖️ 4. Balance the Dataset
+# ==========================================
+fraud = df[df["Class"] == 1]
+non_fraud = df[df["Class"] == 0].sample(n=len(fraud), random_state=42)
+df_balanced = pd.concat([fraud, non_fraud])
+
+print("\nBalanced Class Distribution:\n", df_balanced["Class"].value_counts())
+
+# ==========================================
+# 📊 5. Exploratory Data Analysis (EDA)
+# ==========================================
+plt.figure(figsize=(10,5))
+sns.boxplot(x="Class", y="Amount", data=df_balanced)
+plt.title("Transaction Amount by Class")
+plt.show()
+
+plt.figure(figsize=(8,6))
+sns.heatmap(df_balanced.corr(), cmap="coolwarm", annot=False)
+plt.title("Feature Correlation Heatmap")
+plt.show()
+
+# ==========================================
+# 🧩 6. Feature Selection & Splitting
+# ==========================================
+X = df_balanced.drop("Class", axis=1)
+y = df_balanced["Class"]
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42
+)
+
+# ==========================================
+# ⚙️ 7. Feature Scaling
+# ==========================================
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+# ==========================================
+# 🤖 8. Model Building (Random Forest + XGBoost)
+# ==========================================
+rf = RandomForestClassifier(n_estimators=100, random_state=42)
+xgb = XGBClassifier(use_label_encoder=False, eval_metric="logloss", random_state=42)
+
+rf.fit(X_train, y_train)
+xgb.fit(X_train, y_train)
+
+# ==========================================
+# 🧮 9. Model Evaluation
+# ==========================================
+models = {"Random Forest": rf, "XGBoost": xgb}
+
+for name, model in models.items():
+    y_pred = model.predict(X_test)
+    acc = accuracy_score(y_test, y_pred)
+    roc = roc_auc_score(y_test, y_pred)
+    print(f"\n🚀 {name} Results:")
+    print(f"Accuracy: {acc:.4f}")
+    print(f"ROC AUC: {roc:.4f}")
+    print(classification_report(y_test, y_pred))
+
+    # Confusion Matrix
+    plt.figure(figsize=(4,3))
+    sns.heatmap(confusion_matrix(y_test, y_pred), annot=True, fmt='d', cmap='Blues')
+    plt.title(f"Confusion Matrix - {name}")
+    plt.show()
+
+# ==========================================
+# 💡 10. AI Insights
+# ==========================================
+fraud_rate = (df["Class"].sum() / len(df)) * 100
+print(f"\n💡 Insight: Only {fraud_rate:.3f}% transactions are fraudulent!")
+
+# Probability visualization (XGBoost)
+y_prob = xgb.predict_proba(X_test)[:, 1]
+fpr, tpr, _ = roc_curve(y_test, y_prob)
+
+plt.figure(figsize=(6,4))
+plt.plot(fpr, tpr, color="red", label="XGBoost ROC Curve")
+plt.title("AI Insight: Fraud Detection ROC Curve")
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.legend()
+plt.show()
+
+# ==========================================
+# 🎯 11. Final Output Summary
+# ==========================================
+best_model = "XGBoost" if roc_auc_score(y_test, xgb.predict(X_test)) > roc_auc_score(y_test, rf.predict(X_test)) else "Random Forest"
+print(f"\n🏆 Best Model: {best_model}")
+
+
+dataset_link.txt
+https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud
+
+
+insights.txt
+- Fraud rate extremely low (~0.17%): focus on recall and AUC.
+- Use class_weight or SMOTE for better detection.
+- SHAP explains reasons for each flagged transaction; use for auditing.
+- Business action: auto-flag high-probability transactions for manual review.
+
+
+interview_questions.md
+Q1: Why do we avoid accuracy here?  
+A: Because high accuracy can be achieved by always predicting the majority class; precision & recall give more useful information.
+
+Q2: How do you choose thresholds?  
+A: Choose threshold by business cost — weigh cost of false negatives vs false positives.
+
+Q3: How to explain predictions?  
+A: Use SHAP to show per-feature contribution to the fraud score.
